@@ -1,0 +1,112 @@
+version: '3'
+volumes:
+  node-red-data:
+  postgisinsitorium:
+services:
+#DB-------------------------------------------------------------------------------------
+  postgis_insito:
+    image: kartoza/postgis:11.5-2.5
+    restart: always
+    ports:
+      - 8090:5432
+    environment:
+      - POSTGRES_DB=insitorium
+      - POSTGRES_USER=geobeat
+      - POSTGRES_PASS=password
+      - ALLOW_IP_RANGE=0.0.0.0/0
+      - POSTGRES_MULTIPLE_EXTENSIONS=postgis
+    restart: always
+    volumes:
+      - postgisinsitorium:/var/lib/postgresql
+      - ./insitorium/pg_backup:/srv
+#Lizmap----------------------------------------------------------------------------------
+  nginxI:
+    image: nginx:1
+    volumes:
+      - ./insitorium/lizmap/conf/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./insitorium/conf:/srv/lizmap
+  lizmapI:
+    image: 3liz/lizmap-web-client:3.5.1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    command:
+      - php-fpm
+    environment:
+      LIZMAP_CACHESTORAGETYPE: sqlite
+      LIZMAP_CACHEREDISDB: '1'
+      LIZMAP_USER: '1010'
+      LIZMAP_WMSSERVERURL: http://qgiserverI:8080/ows/
+      LIZMAP_CACHEREDISHOST: redisC
+      LIZMAP_HOME: /srv/lizmap
+    expose:
+      - 9000
+    volumes:
+      - ./insitorium/lizmap:/srv/projects
+      - ./insitorium/conf/var/lizmap-theme-config:/www/lizmap/var/lizmap-theme-config
+      - ./insitorium/conf/var/lizmap-config:/www/lizmap/var/config
+      - ./insitorium/conf/var/lizmap-db:/www/lizmap/var/db
+      - ./insitorium/conf/www:/www/lizmap/www
+      - ./insitorium/conf/var/log/lizmap:/www/lizmap/var/log
+    restart: unless-stopped
+  qgiserverI:
+    image: 3liz/qgis-map-server:3.24
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    environment:
+      PGSERVICEFILE: /srv/etc/pg_service.conf
+      QGSRV_CACHE_ROOTDIR: /srv/projects
+      QGSRV_SERVER_WORKERS: 4
+      QGSRV_CACHE_SIZE: '20'
+      QGSRV_LOGGING_LEVEL: INFO
+      QGSRV_USER: 1000:1000
+      ROUTER_HOST: map
+      QGSRV_ZMQ_IDENTITY: OWS-SERVER
+      QGSRV_ZMQ_INADDR: tcp://*:18080
+      QGSRV_ZMQ_MAXQUEUE: 1000
+      QGSRV_ZMQ_TIMEOUT: 15000
+      LIBGL_DEBUG: verbose glxinfo
+    volumes:
+      - ./insitorium/lizmap:/srv/projects
+      - ./insitorium/conf/etc:/srv/etc:ro
+    restart: unless-stopped
+    expose:
+      - 8080
+      - 18080
+  redisI:
+    image: redis:4
+    restart: always
+    volumes:
+      - ./insitorium/conf/redis4:/data
+    expose:
+      - 6379
+#MQTT NODE-red
+  mosquitto:
+    image: eclipse-mosquitto
+    network_mode: host
+    ports:
+      - 1883:1883
+      - 9001:9001
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  node-red:
+    image: nodered/node-red-dev:3.0.0-beta.4-18
+    #build: ./node-red
+    environment:
+      - TZ=Europe/Paris
+    network_mode: host
+    ports:
+      - 1880:1880
+    user: "0"
+    privileged: true
+    volumes:
+      - node-red-data:/data
+      - ./insitorium:/home
