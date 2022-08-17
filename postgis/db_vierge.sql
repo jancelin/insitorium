@@ -78,3 +78,26 @@ CREATE INDEX idx_geom
         ON public.user_position USING btree
         (id DESC)
         TABLESPACE pg_default;
+        
+    -- Table: public.sound
+
+-- DROP TABLE public.sound;
+
+CREATE TABLE public.sound
+(
+    id serial,
+    name_sound character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    name_ext character varying(60) COLLATE pg_catalog."default",
+    where_file character varying(70) COLLATE pg_catalog."default" NOT NULL,
+    description character varying(100) COLLATE pg_catalog."default",
+    CONSTRAINT sound_pkey PRIMARY KEY (id)
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.sound
+    OWNER to admin;
+
+GRANT ALL ON TABLE public.sound TO admin;
