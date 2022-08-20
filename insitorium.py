@@ -20,41 +20,11 @@ list_play = []
 list_stop = []
 old_sound = []
 
-
-def databaseSound():
-    global resS
-    global res_posS
-    # Connect to an existing database
-    connS = psycopg.connect("host=%s port=%s dbname=%s user=%s password=%s" % (HOST,PORT,DATABASE,USER,PASSWORD))
-    # Open a cursor to send SQL commands
-    curS = connS.cursor()
-    #QUERY
-    QUERY = """--Requête de la liste des sons
-    SELECT
-	   DISTINCT texte as song_file,
-       texte || '.wav' file
-    FROM
-	   point
-    WHERE
-	   central = false"""
-
-    curS.execute(QUERY)
-    # Fetch data line by line
-    resS = curS.fetchall()
-    #print(resS)
-    # Close connection
-    curS.close()
-    connS.close()
-
-
 def database():
     global res
     global res_pos
     # Connect to an existing database
-    conn = psycopg.connect("host=%s port=%s dbname=%s user=%s password=%s" % (HOST,PORT,DATABASE,USER,PASSWORD))
-    # Open a cursor to send SQL commands
-    cur = conn.cursor()
-    #QUERY
+    conn = pg8000.native.Connection(USER,host=HOST, port=8090, database=DATABASE, password=PASSWORD)
     QUERY = """--Requête de calcul de la distance 3D entre l'antenne et tout les points de son
     --exclusion des positions hors du buffer de son (rayon)
     --Calcul du %de volume du son
@@ -82,12 +52,8 @@ def database():
     WHERE a.dist_m < a.rayon
     ORDER BY prcent_vol DESC"""
 
-    cur.execute(QUERY)
-    # Fetch data line by line
-    res = cur.fetchall()
+    res =  conn.run(QUERY)
     print(res)
-    # Close connection
-    cur.close()
     conn.close()
 
 def query():
@@ -125,39 +91,41 @@ def run():
     old_sound = []
     old_play = []
     while True:
-        query()
-        if list_sound: #don't start if no new data
-            #LISTEN!: Load > play > volume
-            for l_s in list_sound:
-                if l_s in old_sound:
-                    print('same sound')
-                else:
-                    print(l_s)
-                    exec(l_s)
-            for l_p in list_play:
-                if l_p in old_play:
-                    print('sound already playing')
-                else:
-                    print(l_p)
-                    exec(l_p)
-            if old_play:
-                for o_p in old_play:
-                        if o_p in list_play:
-                            print('tjs dans la zone')
-                        else:
-                            exec(o_p[:-9]+".stop()")
-                            print('Sortie de zone', o_p[:-9])
-            for l_v in list_volume:
-                print(l_v)
-                exec(l_v)
-                old_sound = list_sound
-                old_play = list_play
-            # for l_s in list_stop:
-            #     print(l_s)
-            #     exec(l_s)
-        else:
-            print('no data')
+        try:
+            query()
+            if list_sound: #don't start if no new data
+                #LISTEN!: Load > play > volume
+                for l_s in list_sound:
+                    if l_s in old_sound:
+                        print('same sound')
+                    else:
+                        print(l_s)
+                        exec(l_s)
+                for l_p in list_play:
+                    if l_p in old_play:
+                        print('sound already playing')
+                    else:
+                        print(l_p)
+                        exec(l_p)
+                if old_play:
+                    for o_p in old_play:
+                            if o_p in list_play:
+                                print('tjs dans la zone')
+                            else:
+                                exec(o_p[:-9]+".stop()")
+                                print('Sortie de zone', o_p[:-9])
+                for l_v in list_volume:
+                    print(l_v)
+                    exec(l_v)
+                    old_sound = list_sound
+                    old_play = list_play
+                # for l_s in list_stop:
+                #     print(l_s)
+                #     exec(l_s)
+            else:
+                print('no data')
+        except Exception:
+            continue
 
 if __name__ == "__main__":
-    # runS()
     run()
