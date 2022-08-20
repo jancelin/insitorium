@@ -3,7 +3,7 @@
 import pygame
 import os
 from pygame.locals import *
-import psycopg
+import pg8000.native
 import time
 
 MUSIC_PATH = "./son/all/"
