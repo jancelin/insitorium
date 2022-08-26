@@ -1,10 +1,12 @@
-# Location of music on your computer
+ Location of music on your computer
 
 import pygame
 import os
 from pygame.locals import *
 import pg8000.native
 import time
+from plyer import gps
+from kivy.lang import Builder
 
 MUSIC_PATH = "./son/all/"
 
@@ -20,9 +22,30 @@ list_play = []
 list_stop = []
 old_sound = []
 
+def gnss_llh(**kwargs):
+    global lat
+    global lon
+    global elv
+    global coor
+    lat = 0.00
+    lon = 0.00
+    elv = 123
+    coor = '0,0,0'
+
+    lat = kwargs.get('lat')
+    lon = kwargs.get('lon')
+    elv = kwargs.get('altitude')
+    coor = str(kwargs.get('lon'))+','+str(kwargs.get('lat'))+','+str(kwargs.get('altitude'))
+
+    print(coor)
+    # print(lon)
+    # print(elv)
+
+
 def database():
     global res
     global res_pos
+    print('Position',coor)
     # Connect to an existing database
     conn = pg8000.native.Connection(USER,host=HOST, port=8090, database=DATABASE, password=PASSWORD)
     QUERY = """--Requête de calcul de la distance 3D entre l'antenne et tout les points de son
@@ -40,18 +63,17 @@ def database():
     			ST_Transform(p.geom,2154),
     			ST_Transform(
     				ST_SetSRID(
-                        ST_MakePoint(pos.longi,pos.lati,pos.height)
+                        ST_MakePoint("""+coor+""")
     				, 4171)
     				,2154)
     	)::NUMERIC,2) as dist_m,
      	rayon
-		FROM public.point p,
-        --(SELECT longi ,lati, height FROM public.user_position ORDER BY id DESC LIMIT 1) pos
-		(SELECT longi ,lati, height FROM public.user_position  ORDER BY id DESC LIMIT 1) pos
+		FROM public.point p
+		--(SELECT longi ,lati, height FROM public.user_position  ORDER BY id DESC LIMIT 1) pos
 	) a
     WHERE a.dist_m < a.rayon
     ORDER BY prcent_vol DESC"""
-
+    # print(QUERY)
     res =  conn.run(QUERY)
     print(res)
     conn.close()
@@ -92,6 +114,9 @@ def run():
     old_play = []
     while True:
         try:
+            gps.configure(on_location=gnss_llh)
+            gps.start()
+            #time.sleep(1)
             query()
             if list_sound: #don't start if no new data
                 #LISTEN!: Load > play > volume
@@ -119,6 +144,7 @@ def run():
                     exec(l_v)
                     old_sound = list_sound
                     old_play = list_play
+                    gps.stop()
                 # for l_s in list_stop:
                 #     print(l_s)
                 #     exec(l_s)
