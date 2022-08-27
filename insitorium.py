@@ -61,8 +61,6 @@ def gnss_llh(**kwargs):
     coor = str(kwargs.get('lon'))+','+str(kwargs.get('lat'))+','+str(kwargs.get('altitude'))
 
     print(coor)
-    # print(lon)
-    # print(elv)
 
 ## Get nearest geolacated sounds from online database
 def database():
@@ -130,8 +128,6 @@ def query():
         list_play.append(cmd_play)
         list_stop.append(cmd_stop)
     print(list_sound)
-    # print(list_volume)
-    # print(list_play)
 
 ## Running insitorium
 def run():
@@ -171,9 +167,6 @@ def run():
                     old_sound = list_sound
                     old_play = list_play
                     gps.stop()
-                # for l_s in list_stop:
-                #     print(l_s)
-                #     exec(l_s)
             else:
                 print('no data')
         except Exception:
