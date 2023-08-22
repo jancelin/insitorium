@@ -1,176 +1,114 @@
-
-##------------------------------------------------------------------------------
-##------------------------------------------------------------------------------
-## Play Insitorium land sound on your smartphone with rtk location
-##------------------------------------------------------------------------------
-##------------------------------------------------------------------------------
-## Use pydroid3 on your smartphone for runnig:
-## * Pydroid 3 - IDE for Python 3:
-##      https://play.google.com/store/apps/details?id=ru.iiec.pydroid3&hl=fr&gl=US
-## * ACtivate location : Setting > system > additionnal permissions:
-##      https://play.google.com/store/apps/details?id=ru.iiec.pydroidpermissionsplugin
-## * Pydroid repository plugin:
-##      https://play.google.com/store/apps/details?id=ru.iiec.pydroid3.quickinstallrepo
-## * PIP INSTALL :
-##      * pg8000
-##      * plyer
-## Use rtk connexion for location with Lefebure and CentipedeRTK:
-##  * https://play.google.com/store/search?q=lefebure+ntrip&c=apps&hl=fr&gl=FR
-##  * https://docs.centipede.fr/docs/Rover_rtklib_android/#application-lefebure-propri%C3%A9taire
-##------------------------------------------------------------------------------
-
 import pygame
-import os
-from pygame.locals import *
-import pg8000.native
+import threading
 import time
+from geopy.distance import geodesic
+import pg8000
 from plyer import gps
-from kivy.lang import Builder
 
-## Where sounds ?
-MUSIC_PATH = "./son/all/"
+# Connexion à la base de données PostgreSQL, modifier avec votre paramétrage
+conn = pg8000.connect(
+    user='user',
+    password='hackme',
+    host='IP_postgres_database',
+    port=5432,
+    database='insitorium'
+)
 
-## Online Database connexion
-HOST = "localhost"
-PORT = 5432
-USER = "geobeat"
-PASSWORD = "password"
-DATABASE = "insitorium"
+# Initialisation de pygame
+pygame.mixer.pre_init(44100, -16, 6, 1024*4)
+pygame.mixer.init()
+pygame.init()
 
-## Blank variables
-list_sound = []
-list_volume =[]
-list_play = []
-list_stop = []
-old_sound = []
+# Rayon de 100 mètres
+radius = 100
 
-## Get location
-def gnss_llh(**kwargs):
-    global lat
-    global lon
-    global elv
-    global coor
-    lat = 0.00
-    lon = 0.00
-    elv = 123
-    coor = '0,0,0'
+# Coordonnées cibles (initialisées avec des valeurs par défaut)
+target_coor = (0, 0)  # Les coordonnées cibles seront mises à jour par le GPS
 
-    lat = kwargs.get('lat')
-    lon = kwargs.get('lon')
-    elv = kwargs.get('altitude')
-    coor = str(kwargs.get('lon'))+','+str(kwargs.get('lat'))+','+str(kwargs.get('altitude'))
+# Fonction pour jouer le son "bug.wav"
+def play_waiting_sound():
+    waiting_sound = pygame.mixer.Sound("./son/wait.wav")
+    waiting_sound.set_volume(0.1)  # Volume à 60%
+    waiting_sound.play(-1)  # Joue en boucle en continu
+    return waiting_sound
 
-    print(coor)
+# Jouer le son d'attente
+waiting_sound = play_waiting_sound()
 
-## Get nearest geolacated sounds from online database
-def database():
-    global res
-    global res_pos
-    print('Position',coor)
-    # Connect to an existing database
-    conn = pg8000.native.Connection(USER,host=HOST, port=8090, database=DATABASE, password=PASSWORD)
-    QUERY = """--Requête de calcul de la distance 3D entre l'antenne et tout les points de son
-    --exclusion des positions hors du buffer de son (rayon)
-    --Calcul du %de volume du son
-    SELECT
-    *,
-    ROUND(100-((a.dist_m * 100)/a.rayon)) prcent_vol --Calcul du %de volume du son
-    FROM
-    (SELECT
-    	p.id,
-    	p.texte || '.wav' song_file,
-    	ROUND(
-    		ST_3DDistance(
-    			ST_Transform(p.geom,2154),
-    			ST_Transform(
-    				ST_SetSRID(
-                        ST_MakePoint("""+coor+""")
-    				, 4171)
-    				,2154)
-    	)::NUMERIC,2) as dist_m,
-     	rayon
-		FROM public.point p
-		--(SELECT longi ,lati, height FROM public.user_position  ORDER BY id DESC LIMIT 1) pos
-	) a
-    WHERE a.dist_m < a.rayon
-    ORDER BY prcent_vol DESC"""
-    # print(QUERY)
-    res =  conn.run(QUERY)
-    print(res)
-    conn.close()
+# Callback pour mettre à jour les coordonnées cibles
+def on_location(**kwargs):
+    global target_coor
+    target_coor = (kwargs['lon'], kwargs['lat'])
+    #print("Received GPS Data:", target_coor)
 
-## Transform database values to python pygame Sound command (load, play, volume, fadeout,...)
-def query():
-    global list_play
-    global list_volume
-    global list_sound
-    list_sound = []
-    list_volume =[]
-    list_play = []
-    database()
-    pygame.mixer.pre_init(44100, -16, 6, 1024*4)
-    pygame.mixer.init()
-    pygame.init()
-    #get song2play from database()
-    for row in res:
-        cmd1 = "sound"
-        cmd2 = " = pygame.mixer.Sound('"
-        cmd3 = "')"
-        cmd4 = ".set_volume("
-        cmd5 = ")"
-        cmd_sound = cmd1+str(row[0])+cmd2+MUSIC_PATH+row[1]+cmd3
-        cmd_volume = cmd1+str(row[0]) +cmd4+str(row[4]/100)+cmd5
-        cmd_play = cmd1+str(row[0])+".play(-1)"
-        cmd_stop = cmd1+str(row[0])+".stop()"
-        #make list
-        list_sound.append(cmd_sound)
-        list_volume.append(cmd_volume)
-        list_play.append(cmd_play)
-        list_stop.append(cmd_stop)
-    print(list_sound)
+    # Arrêter le son d'attente une fois la position GPS reçue
+    if waiting_sound:
+        waiting_sound.stop()
 
-## Running insitorium
-def run():
-    old_sound = []
-    old_play = []
+# Configuration et initialisation de Plyer GPS
+gps.configure(on_location=on_location)
+gps.start(minTime=50, minDistance=0.01)
+
+# Attendre la réception d'une position GPS de bonne qualité avant de continuer
+while target_coor == (0, 0):
+    print("Waiting for GPS Data...")
+    time.sleep(0.5)
+
+# Requête SQL pour récupérer les données avec les coordonnées en (longitude,latitude)
+query = f"""
+    SELECT p.id, p.texte, ST_Y(p.geom) as lat, ST_X(p.geom) as lon, p.rayon
+    FROM public.point2 p
+    WHERE ST_DWithin(ST_SetSRID(ST_MakePoint({target_coor[0]}, {target_coor[1]}), 4171)::geography, p.geom::geography, {radius});
+"""
+
+# Exécution de la requête et stockage dans une liste
+cursor = conn.cursor()
+cursor.execute(query)
+data = cursor.fetchall()
+cursor.close()
+
+# Création d'une liste de dictionnaires pour stocker les données
+local_data = [{'id': row[0], 'texte': row[1], 'geom': (row[3], row[2]), 'rayon': float(row[4]), 'playing': False} for row in data]
+
+print("Local Data:", local_data)  # Affichage en mode débogage
+
+def play_sound(file_path, volume):
+    sound = pygame.mixer.Sound(file_path)
+    sound.set_volume(volume)
+    sound.play(-1)  # Joue en boucle
+    return sound
+
+def update_distances_and_volumes():
+    point_sounds = {}
+
     while True:
-        try:
-            ## Start GPS & get positions
-            gps.configure(on_location=gnss_llh)
-            gps.start()
-            ## Get nerest sounds with
-            query()
-            if list_sound: ## don't start if no new data
-                ## LISTEN!: Load > play > volume or fadeout sound
-                for l_s in list_sound:
-                    if l_s in old_sound:
-                        print('same sound')
-                    else:
-                        print(l_s)
-                        exec(l_s)
-                for l_p in list_play:
-                    if l_p in old_play:
-                        print('sound already playing')
-                    else:
-                        print(l_p)
-                        exec(l_p)
-                if old_play:
-                    for o_p in old_play:
-                            if o_p in list_play:
-                                print('tjs dans la zone')
-                            else:
-                                exec(o_p[:-9]+".fadeout(900)")
-                                print('Sortie de zone', o_p[:-9])
-                for l_v in list_volume:
-                    print(l_v)
-                    exec(l_v)
-                    old_sound = list_sound
-                    old_play = list_play
-                    gps.stop()
-            else:
-                print('no data')
-        except Exception:
-            continue
+        # Récupération des coordonnées du GPS
+        gps_coordinates = target_coor
 
-if __name__ == "__main__":
-    run()
+        # Calcul de la distance pour chaque point
+        for point in local_data:
+            point_coords = point['geom']
+            point_distance = geodesic(gps_coordinates, point_coords).meters
+            point['distance'] = point_distance
+
+            # Calcul du volume sonore
+            point['prcent_vol'] = 100 - ((point_distance * 100) / point['rayon'])
+
+            if point['id'] in point_sounds:
+                if point['prcent_vol'] <= 0:
+                    point_sounds[point['id']].fadeout(800)
+                    #point_sounds[point['id']].stop()
+                    del point_sounds[point['id']]
+                else:
+                    point_sounds[point['id']].set_volume(point['prcent_vol'] / 100)
+            else:
+                if point['prcent_vol'] > 0:
+                    point_sound = play_sound(f"./son/{point['texte']}.wav", point['prcent_vol'] / 100)
+                    point_sounds[point['id']] = point_sound
+
+        # Pause très courte pour la mise à jour
+        time.sleep(0.05)  # Vous pouvez ajuster cette valeur en fonction de vos besoins
+
+# Démarrage du thread de mise à jour
+update_thread = threading.Thread(target=update_distances_and_volumes)
+update_thread.start()
