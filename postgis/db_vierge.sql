@@ -12,26 +12,22 @@ ALTER DATABASE insitorium
     SET search_path TO '"$user", public, topology';
 -- Table: public.point
 
--- DROP TABLE public.point;
+-- DROP TABLE public.point2;
 
-CREATE TABLE public.point
+CREATE TABLE IF NOT EXISTS public.point2
 (
-    id serial,
-    geom geometry(PointZ,4171),
-    hauteur numeric,
-    ordre integer,
+    id integer NOT NULL DEFAULT nextval('point2_id_seq'::regclass),
+    geom geometry(Point,4171),
     rayon numeric,
     texte character varying(25) COLLATE pg_catalog."default",
-    central boolean,
-    ausol boolean,
-    CONSTRAINT pk_point PRIMARY KEY (id)
+    CONSTRAINT pk_point2 PRIMARY KEY (id)
 )
 WITH (
     OIDS = FALSE
 )
 TABLESPACE pg_default;
 
-ALTER TABLE public.point
+ALTER TABLE public.point2
     OWNER to admin;
 
 -- Index: idx_geom
@@ -39,65 +35,18 @@ ALTER TABLE public.point
 -- DROP INDEX public.idx_geom;
 
 CREATE INDEX idx_geom
-    ON public.point USING gist
+    ON public.point2 USING gist
     (geom gist_geometry_ops)
     TABLESPACE pg_default;
 
-    -- Table: public.user_position
+CREATE OR REPLACE VIEW public.bufferpoint2
+ AS
+ SELECT p.id,
+    p.texte,
+    st_buffer(p.geom::geography, p.rayon::double precision, 35) AS buffer
+   FROM point2 p;
 
-    -- DROP TABLE public.user_position;
+ALTER TABLE public.bufferpoint2
+    OWNER TO admin;
 
-    CREATE TABLE public.user_position
-    (
-        id serial,
-        user_ins character varying COLLATE pg_catalog."default",
-        dat numeric,
-        lati numeric,
-        longi numeric,
-        height numeric,
-        direct numeric,
-        CONSTRAINT id_user_insitorium PRIMARY KEY (id)
-    )
-    WITH (
-        OIDS = FALSE
-    )
-    TABLESPACE pg_default;
-
-    ALTER TABLE public.user_position
-        OWNER to admin;
-
-    GRANT ALL ON TABLE public.user_position TO admin;
-
-    GRANT SELECT ON TABLE public.user_position TO replicator;
-
-    -- Index: inx_user_pos
-
-    -- DROP INDEX public.inx_user_pos;
-
-    CREATE INDEX inx_user_pos
-        ON public.user_position USING btree
-        (id DESC)
-        TABLESPACE pg_default;
-        
-    -- Table: public.sound
-
--- DROP TABLE public.sound;
-
-CREATE TABLE public.sound
-(
-    id serial,
-    name_sound character varying(50) COLLATE pg_catalog."default" NOT NULL,
-    name_ext character varying(60) COLLATE pg_catalog."default",
-    where_file character varying(70) COLLATE pg_catalog."default" NOT NULL,
-    description character varying(100) COLLATE pg_catalog."default",
-    CONSTRAINT sound_pkey PRIMARY KEY (id)
-)
-WITH (
-    OIDS = FALSE
-)
-TABLESPACE pg_default;
-
-ALTER TABLE public.sound
-    OWNER to admin;
-
-GRANT ALL ON TABLE public.sound TO admin;
+GRANT ALL ON TABLE public.bufferpoint2 TO admin;
